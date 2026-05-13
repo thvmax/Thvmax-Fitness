@@ -98,4 +98,3 @@ Use the **Export/Import** feature in History to backup your data.
 ---
 
 *EVERY TOUCH IS ART · THVMAX 2026*
-# Thvmax-Fitness

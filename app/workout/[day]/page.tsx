@@ -109,7 +109,13 @@ export default function WorkoutPage() {
     (exerciseId: string, field: keyof ExerciseLog, value: number | string | undefined) => {
       if (!session) return;
       const updated = { ...session };
-      (updated.exercises[exerciseId] as Record<string, unknown>)[field] = value;
+      const log = { ...updated.exercises[exerciseId] };
+      if (field === "weight") log.weight = value as number | undefined;
+      else if (field === "reps") log.reps = value as number | undefined;
+      else if (field === "rpeActual") log.rpeActual = value as number | undefined;
+      else if (field === "notes") log.notes = value as string | undefined;
+      else if (field === "completed") log.completed = value as unknown as boolean;
+      updated.exercises[exerciseId] = log;
       setSession({ ...updated });
       saveCurrentSession(updated);
     },
