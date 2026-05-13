@@ -1,0 +1,7 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="96" fill="#050506"/>
+  <rect x="24" y="24" width="464" height="464" rx="80" fill="none" stroke="#222228" stroke-width="2"/>
+  <text x="256" y="300" text-anchor="middle" font-family="monospace" font-weight="900" font-size="180" fill="#E8E8EC">T</text>
+  <rect x="100" y="380" width="312" height="3" rx="1.5" fill="#457B9D"/>
+  <text x="256" y="430" text-anchor="middle" font-family="monospace" font-weight="700" font-size="36" fill="#55556A" letter-spacing="8">FITNESS</text>
+</svg>
