@@ -52,6 +52,11 @@ export function getWorkoutRecordByDate(date: string, dayKey: string): WorkoutRec
   return getWorkoutRecords().find((r) => r.date === date && r.dayKey === dayKey);
 }
 
+export function deleteWorkoutRecord(id: string): void {
+  const records = getWorkoutRecords().filter((r) => r.id !== id);
+  setItem(STORAGE_KEYS.WORKOUT_RECORDS, records);
+}
+
 export function getThisWeekRecords(): WorkoutRecord[] {
   const now = new Date();
   const monday = new Date(now);

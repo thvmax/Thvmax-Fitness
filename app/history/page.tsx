@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getWorkoutRecords, getUserStats, recalculateStats, exportAllData, importAllData } from "@/lib/storage";
+import { getWorkoutRecords, getUserStats, recalculateStats, exportAllData, importAllData, deleteWorkoutRecord } from "@/lib/storage";
 import { WorkoutRecord, UserStats } from "@/lib/types";
 import { WORKOUT_DAYS } from "@/lib/workout-data";
 
@@ -46,6 +46,14 @@ export default function HistoryPage() {
     a.download = `thvmax-backup-${new Date().toISOString().split("T")[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDeleteRecord = (id: string) => {
+    if (!confirm("Are you sure you want to delete this workout record?")) return;
+    deleteWorkoutRecord(id);
+    setRecords(getWorkoutRecords());
+    setStats(recalculateStats());
+    if (expandedId === id) setExpandedId(null);
   };
 
   const handleImport = () => {
@@ -241,6 +249,14 @@ export default function HistoryPage() {
                                   )}
                                 </div>
                               ))}
+                            </div>
+                            <div className="mt-4 flex justify-end border-t border-surface-3 pt-3">
+                              <button
+                                onClick={() => handleDeleteRecord(record.id)}
+                                className="font-mono text-[10px] text-red-400/60 hover:text-red-400 transition-colors"
+                              >
+                                Delete record
+                              </button>
                             </div>
                           </div>
                         )}
