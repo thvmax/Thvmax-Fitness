@@ -40,7 +40,10 @@ export default function ProgressPage() {
   const [activeSlot, setActiveSlot] = useState<PhotoSlot>("front");
 
   useEffect(() => {
-    setEntries(getProgressEntries());
+    async function loadData() {
+      setEntries(await getProgressEntries());
+    }
+    loadData();
   }, []);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,8 +97,8 @@ export default function ProgressPage() {
       notes: measurements.notes || undefined,
     };
 
-    saveProgressEntry(entry);
-    setEntries(getProgressEntries());
+    await saveProgressEntry(entry);
+    setEntries(await getProgressEntries());
     setPhotos({ front: null, side: null, back: null });
     setMeasurements({ weight: "", bodyFat: "", chest: "", waist: "", arms: "", thighs: "", notes: "" });
     setSaving(false);
@@ -120,10 +123,10 @@ export default function ProgressPage() {
     setViewPhotos(vp);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Delete this progress entry?")) return;
-    deleteProgressEntry(id);
-    setEntries(getProgressEntries());
+    await deleteProgressEntry(id);
+    setEntries(await getProgressEntries());
     if (viewingEntry === id) {
       setViewingEntry(null);
       setViewPhotos({ front: null, side: null, back: null });

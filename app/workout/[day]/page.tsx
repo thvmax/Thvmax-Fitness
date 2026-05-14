@@ -43,37 +43,40 @@ export default function WorkoutPage() {
   useEffect(() => {
     if (!workout || workout.isRest) return;
 
-    const existing = getCurrentSession();
-    if (existing && existing.dayKey === resolvedKey && existing.date === today) {
-      setSession(existing);
-      setIsActive(true);
-      setTimer(Math.floor((Date.now() - existing.startTime) / 1000));
-    } else {
-      const newSession: CurrentSession = {
-        dayKey: resolvedKey,
-        date: today,
-        startTime: Date.now(),
-        exercises: {},
-      };
-      workout.exercises?.forEach((ex) => {
-        newSession.exercises[ex.id] = {
-          exerciseId: ex.id,
-          completed: false,
+    async function initSession() {
+      const existing = await getCurrentSession();
+      if (existing && existing.dayKey === resolvedKey && existing.date === today) {
+        setSession(existing);
+        setIsActive(true);
+        setTimer(Math.floor((Date.now() - existing.startTime) / 1000));
+      } else {
+        const newSession: CurrentSession = {
+          dayKey: resolvedKey,
+          date: today,
+          startTime: Date.now(),
+          exercises: {},
         };
-      });
-
-      // Restore if already saved today
-      const record = getWorkoutRecordByDate(today, resolvedKey);
-      if (record) {
-        record.exercises.forEach((log) => {
-          newSession.exercises[log.exerciseId] = log;
+        workout!.exercises?.forEach((ex) => {
+          newSession.exercises[ex.id] = {
+            exerciseId: ex.id,
+            completed: false,
+          };
         });
-        setSaved(true);
-      }
 
-      setSession(newSession);
-      saveCurrentSession(newSession);
+        // Restore if already saved today
+        const record = await getWorkoutRecordByDate(today, resolvedKey);
+        if (record) {
+          record.exercises.forEach((log) => {
+            newSession.exercises[log.exerciseId] = log;
+          });
+          setSaved(true);
+        }
+
+        setSession(newSession);
+        await saveCurrentSession(newSession);
+      }
     }
+    initSession();
   }, [resolvedKey, workout, today]);
 
   // Timer
@@ -93,20 +96,20 @@ export default function WorkoutPage() {
 
   // Toggle exercise completion
   const toggleExercise = useCallback(
-    (exerciseId: string) => {
+    async (exerciseId: string) => {
       if (!session) return;
       const updated = { ...session };
       const log = updated.exercises[exerciseId];
       log.completed = !log.completed;
       setSession({ ...updated });
-      saveCurrentSession(updated);
+      await saveCurrentSession(updated);
     },
     [session]
   );
 
   // Update exercise details
   const updateExerciseDetail = useCallback(
-    (exerciseId: string, field: keyof ExerciseLog, value: number | string | undefined) => {
+    async (exerciseId: string, field: keyof ExerciseLog, value: number | string | undefined) => {
       if (!session) return;
       const updated = { ...session };
       const log = { ...updated.exercises[exerciseId] };
@@ -117,13 +120,13 @@ export default function WorkoutPage() {
       else if (field === "completed") log.completed = value as unknown as boolean;
       updated.exercises[exerciseId] = log;
       setSession({ ...updated });
-      saveCurrentSession(updated);
+      await saveCurrentSession(updated);
     },
     [session]
   );
 
   // Save workout
-  const saveWorkout = () => {
+  const saveWorkout = async () => {
     if (!session || !workout) return;
 
     const exerciseLogs = Object.values(session.exercises);
@@ -138,8 +141,8 @@ export default function WorkoutPage() {
       duration: Math.floor((Date.now() - session.startTime) / 1000),
     };
 
-    saveWorkoutRecord(record);
-    clearCurrentSession();
+    await saveWorkoutRecord(record);
+    await clearCurrentSession();
     setSaved(true);
     setIsActive(false);
   };

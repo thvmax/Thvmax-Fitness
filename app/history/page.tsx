@@ -18,8 +18,11 @@ export default function HistoryPage() {
   const [showExport, setShowExport] = useState(false);
 
   useEffect(() => {
-    setRecords(getWorkoutRecords());
-    setStats(recalculateStats());
+    async function loadData() {
+      setRecords(await getWorkoutRecords());
+      setStats(await recalculateStats());
+    }
+    loadData();
   }, []);
 
   // Group records by week
@@ -37,8 +40,8 @@ export default function HistoryPage() {
     (a, b) => new Date(b).getTime() - new Date(a).getTime()
   );
 
-  const handleExport = () => {
-    const data = exportAllData();
+  const handleExport = async () => {
+    const data = await exportAllData();
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -48,11 +51,11 @@ export default function HistoryPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleDeleteRecord = (id: string) => {
+  const handleDeleteRecord = async (id: string) => {
     if (!confirm("Are you sure you want to delete this workout record?")) return;
-    deleteWorkoutRecord(id);
-    setRecords(getWorkoutRecords());
-    setStats(recalculateStats());
+    await deleteWorkoutRecord(id);
+    setRecords(await getWorkoutRecords());
+    setStats(await recalculateStats());
     if (expandedId === id) setExpandedId(null);
   };
 
@@ -64,9 +67,9 @@ export default function HistoryPage() {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const text = await file.text();
-      if (importAllData(text)) {
-        setRecords(getWorkoutRecords());
-        setStats(recalculateStats());
+      if (await importAllData(text)) {
+        setRecords(await getWorkoutRecords());
+        setStats(await recalculateStats());
         alert("Data imported successfully!");
       } else {
         alert("Import failed. Invalid file format.");

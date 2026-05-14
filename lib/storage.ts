@@ -1,71 +1,111 @@
+import { supabase } from "./supabase";
 import { WorkoutRecord, ProgressEntry, UserStats, ExerciseLog } from "./types";
 
-const STORAGE_KEYS = {
-  WORKOUT_RECORDS: "thvmax_workout_records",
-  PROGRESS_ENTRIES: "thvmax_progress_entries",
-  USER_STATS: "thvmax_user_stats",
-  CURRENT_SESSION: "thvmax_current_session",
-};
+// For anonymous usage without auth, we use a single hardcoded UUID.
+// In the future, this can be dynamically set by Supabase Auth.
+const USER_ID = "00000000-0000-0000-0000-000000000000";
 
 // ─── Helpers ───────────────────────────────────────────────
 
-function getItem<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : fallback;
-  } catch {
-    return fallback;
-  }
+function mapWorkoutRecord(row: any): WorkoutRecord {
+  return {
+    id: row.id,
+    date: row.date,
+    dayKey: row.day_key,
+    dayTitle: row.day_title,
+    exercises: row.exercises,
+    completedCount: row.completed_count,
+    totalCount: row.total_count,
+    duration: row.duration,
+    mood: row.mood,
+  };
 }
 
-function setItem<T>(key: string, value: T): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.error("Storage write failed:", e);
-  }
+function mapProgressEntry(row: any): ProgressEntry {
+  return {
+    id: row.id,
+    date: row.date,
+    week: row.week,
+    photoFront: row.photo_front,
+    photoSide: row.photo_side,
+    photoBack: row.photo_back,
+    weight: row.weight,
+    bodyFat: row.body_fat,
+    chest: row.chest,
+    waist: row.waist,
+    arms: row.arms,
+    thighs: row.thighs,
+    notes: row.notes,
+  };
 }
 
 // ─── Workout Records ──────────────────────────────────────
 
-export function getWorkoutRecords(): WorkoutRecord[] {
-  return getItem<WorkoutRecord[]>(STORAGE_KEYS.WORKOUT_RECORDS, []);
-}
+export async function getWorkoutRecords(): Promise<WorkoutRecord[]> {
+  const { data, error } = await supabase
+    .from("workout_records")
+    .select("*")
+    .order("date", { ascending: false });
 
-export function saveWorkoutRecord(record: WorkoutRecord): void {
-  const records = getWorkoutRecords();
-  const existingIdx = records.findIndex(
-    (r) => r.date === record.date && r.dayKey === record.dayKey
-  );
-  if (existingIdx >= 0) {
-    records[existingIdx] = record;
-  } else {
-    records.push(record);
+  if (error) {
+    console.error("Error fetching workout records:", error);
+    return [];
   }
-  records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  setItem(STORAGE_KEYS.WORKOUT_RECORDS, records);
+  return data.map(mapWorkoutRecord);
 }
 
-export function getWorkoutRecordByDate(date: string, dayKey: string): WorkoutRecord | undefined {
-  return getWorkoutRecords().find((r) => r.date === date && r.dayKey === dayKey);
+export async function saveWorkoutRecord(record: WorkoutRecord): Promise<void> {
+  const { error } = await supabase.from("workout_records").upsert({
+    id: record.id,
+    user_id: USER_ID,
+    date: record.date,
+    day_key: record.dayKey,
+    day_title: record.dayTitle,
+    exercises: record.exercises,
+    completed_count: record.completedCount,
+    total_count: record.totalCount,
+    duration: record.duration,
+    mood: record.mood,
+  }, { onConflict: 'id' });
+
+  if (error) console.error("Error saving workout record:", error);
 }
 
-export function deleteWorkoutRecord(id: string): void {
-  const records = getWorkoutRecords().filter((r) => r.id !== id);
-  setItem(STORAGE_KEYS.WORKOUT_RECORDS, records);
+export async function getWorkoutRecordByDate(date: string, dayKey: string): Promise<WorkoutRecord | undefined> {
+  const { data, error } = await supabase
+    .from("workout_records")
+    .select("*")
+    .eq("date", date)
+    .eq("day_key", dayKey)
+    .single();
+
+  if (error || !data) return undefined;
+  return mapWorkoutRecord(data);
 }
 
-export function getThisWeekRecords(): WorkoutRecord[] {
+export async function deleteWorkoutRecord(id: string): Promise<void> {
+  const { error } = await supabase.from("workout_records").delete().eq("id", id);
+  if (error) console.error("Error deleting workout record:", error);
+}
+
+export async function getThisWeekRecords(): Promise<WorkoutRecord[]> {
   const now = new Date();
   const monday = new Date(now);
   monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
   monday.setHours(0, 0, 0, 0);
+  const mondayStr = monday.toISOString().split("T")[0];
 
-  return getWorkoutRecords().filter(
-    (r) => new Date(r.date) >= monday
-  );
+  const { data, error } = await supabase
+    .from("workout_records")
+    .select("*")
+    .gte("date", mondayStr)
+    .order("date", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching this week's records:", error);
+    return [];
+  }
+  return data.map(mapWorkoutRecord);
 }
 
 // ─── Current Session (in-progress) ────────────────────────
@@ -77,46 +117,91 @@ export interface CurrentSession {
   exercises: Record<string, ExerciseLog>;
 }
 
-export function getCurrentSession(): CurrentSession | null {
-  return getItem<CurrentSession | null>(STORAGE_KEYS.CURRENT_SESSION, null);
+export async function getCurrentSession(): Promise<CurrentSession | null> {
+  // To avoid multiple sessions for one user, we'll just get the latest one
+  const { data, error } = await supabase
+    .from("current_sessions")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  return {
+    dayKey: data.day_key,
+    date: data.date,
+    startTime: data.start_time,
+    exercises: data.exercises,
+  };
 }
 
-export function saveCurrentSession(session: CurrentSession): void {
-  setItem(STORAGE_KEYS.CURRENT_SESSION, session);
+export async function saveCurrentSession(session: CurrentSession): Promise<void> {
+  const { error } = await supabase.from("current_sessions").upsert({
+    id: "00000000-0000-0000-0000-000000000001", // Single row for in-progress session
+    user_id: USER_ID,
+    day_key: session.dayKey,
+    date: session.date,
+    start_time: session.startTime,
+    exercises: session.exercises,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'id' });
+
+  if (error) console.error("Error saving current session:", error);
 }
 
-export function clearCurrentSession(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_SESSION);
-  }
+export async function clearCurrentSession(): Promise<void> {
+  const { error } = await supabase
+    .from("current_sessions")
+    .delete()
+    .eq("id", "00000000-0000-0000-0000-000000000001");
+  if (error) console.error("Error clearing current session:", error);
 }
 
 // ─── Progress Entries ─────────────────────────────────────
 
-export function getProgressEntries(): ProgressEntry[] {
-  return getItem<ProgressEntry[]>(STORAGE_KEYS.PROGRESS_ENTRIES, []);
-}
+export async function getProgressEntries(): Promise<ProgressEntry[]> {
+  const { data, error } = await supabase
+    .from("progress_entries")
+    .select("*")
+    .order("date", { ascending: false });
 
-export function saveProgressEntry(entry: ProgressEntry): void {
-  const entries = getProgressEntries();
-  const existingIdx = entries.findIndex((e) => e.id === entry.id);
-  if (existingIdx >= 0) {
-    entries[existingIdx] = entry;
-  } else {
-    entries.push(entry);
+  if (error) {
+    console.error("Error fetching progress entries:", error);
+    return [];
   }
-  entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  setItem(STORAGE_KEYS.PROGRESS_ENTRIES, entries);
+  return data.map(mapProgressEntry);
 }
 
-export function deleteProgressEntry(id: string): void {
-  const entries = getProgressEntries().filter((e) => e.id !== id);
-  setItem(STORAGE_KEYS.PROGRESS_ENTRIES, entries);
+export async function saveProgressEntry(entry: ProgressEntry): Promise<void> {
+  const { error } = await supabase.from("progress_entries").upsert({
+    id: entry.id,
+    user_id: USER_ID,
+    date: entry.date,
+    week: entry.week,
+    photo_front: entry.photoFront,
+    photo_side: entry.photoSide,
+    photo_back: entry.photoBack,
+    weight: entry.weight,
+    body_fat: entry.bodyFat,
+    chest: entry.chest,
+    waist: entry.waist,
+    arms: entry.arms,
+    thighs: entry.thighs,
+    notes: entry.notes,
+  }, { onConflict: 'id' });
+
+  if (error) console.error("Error saving progress entry:", error);
+}
+
+export async function deleteProgressEntry(id: string): Promise<void> {
+  const { error } = await supabase.from("progress_entries").delete().eq("id", id);
+  if (error) console.error("Error deleting progress entry:", error);
 }
 
 // ─── User Stats ───────────────────────────────────────────
 
-export function getUserStats(): UserStats {
+export async function getUserStats(): Promise<UserStats> {
   const defaults: UserStats = {
     currentStreak: 0,
     longestStreak: 0,
@@ -124,14 +209,28 @@ export function getUserStats(): UserStats {
     thisWeekCompleted: 0,
     joinDate: new Date().toISOString().split("T")[0],
   };
-  return getItem<UserStats>(STORAGE_KEYS.USER_STATS, defaults);
+
+  const { data, error } = await supabase
+    .from("user_stats")
+    .select("*")
+    .eq("user_id", USER_ID)
+    .maybeSingle();
+
+  if (error || !data) return defaults;
+
+  return {
+    currentStreak: data.current_streak,
+    longestStreak: data.longest_streak,
+    totalWorkouts: data.total_workouts,
+    thisWeekCompleted: 0, // This should be calculated or passed dynamically
+    joinDate: data.join_date,
+  };
 }
 
-export function recalculateStats(): UserStats {
-  const records = getWorkoutRecords();
-  const weekRecords = getThisWeekRecords();
+export async function recalculateStats(): Promise<UserStats> {
+  const records = await getWorkoutRecords();
+  const weekRecords = await getThisWeekRecords();
 
-  // Calculate streak
   let streak = 0;
   const uniqueDays = [...new Set(records.map((r) => r.date))].sort(
     (a, b) => new Date(b).getTime() - new Date(a).getTime()
@@ -156,66 +255,59 @@ export function recalculateStats(): UserStats {
     }
   }
 
+  const existingStats = await getUserStats();
   const stats: UserStats = {
     currentStreak: streak,
-    longestStreak: Math.max(streak, getUserStats().longestStreak),
+    longestStreak: Math.max(streak, existingStats.longestStreak),
     totalWorkouts: records.length,
     thisWeekCompleted: weekRecords.length,
-    joinDate: getUserStats().joinDate,
+    joinDate: existingStats.joinDate,
   };
 
-  setItem(STORAGE_KEYS.USER_STATS, stats);
+  await supabase.from("user_stats").upsert({
+    user_id: USER_ID,
+    current_streak: stats.currentStreak,
+    longest_streak: stats.longestStreak,
+    total_workouts: stats.totalWorkouts,
+    join_date: stats.joinDate,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'user_id' });
+
   return stats;
 }
 
-// ─── Photo Storage via IndexedDB ──────────────────────────
-
-const DB_NAME = "thvmax_photos";
-const DB_VERSION = 1;
-const STORE_NAME = "photos";
-
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: "id" });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
+// ─── Photo Storage via Supabase ───────────────────────────
 
 export async function savePhoto(id: string, dataUrl: string): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    tx.objectStore(STORE_NAME).put({ id, dataUrl, savedAt: Date.now() });
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], `${id}.jpg`, { type: "image/jpeg" });
+
+    const { error } = await supabase.storage
+      .from("progress_photos")
+      .upload(`${id}.jpg`, file, { upsert: true });
+
+    if (error) console.error("Error uploading photo:", error);
+  } catch (err) {
+    console.error("Failed to convert/upload dataUrl to file", err);
+  }
 }
 
 export async function getPhoto(id: string): Promise<string | null> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const request = tx.objectStore(STORE_NAME).get(id);
-    request.onsuccess = () => resolve(request.result?.dataUrl || null);
-    request.onerror = () => reject(request.error);
-  });
+  const { data } = supabase.storage
+    .from("progress_photos")
+    .getPublicUrl(`${id}.jpg`);
+  
+  return data.publicUrl;
 }
 
 export async function deletePhoto(id: string): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    tx.objectStore(STORE_NAME).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  const { error } = await supabase.storage
+    .from("progress_photos")
+    .remove([`${id}.jpg`]);
+  
+  if (error) console.error("Error deleting photo:", error);
 }
 
 // ─── Image Compression ────────────────────────────────────
@@ -249,22 +341,39 @@ export function compressImage(
 
 // ─── Export / Import ──────────────────────────────────────
 
-export function exportAllData(): string {
+export async function exportAllData(): Promise<string> {
+  const workoutRecords = await getWorkoutRecords();
+  const progressEntries = await getProgressEntries();
+  const userStats = await getUserStats();
+  
   const data = {
-    workoutRecords: getWorkoutRecords(),
-    progressEntries: getProgressEntries(),
-    userStats: getUserStats(),
+    workoutRecords,
+    progressEntries,
+    userStats,
     exportedAt: new Date().toISOString(),
   };
   return JSON.stringify(data, null, 2);
 }
 
-export function importAllData(json: string): boolean {
+export async function importAllData(json: string): Promise<boolean> {
   try {
     const data = JSON.parse(json);
-    if (data.workoutRecords) setItem(STORAGE_KEYS.WORKOUT_RECORDS, data.workoutRecords);
-    if (data.progressEntries) setItem(STORAGE_KEYS.PROGRESS_ENTRIES, data.progressEntries);
-    if (data.userStats) setItem(STORAGE_KEYS.USER_STATS, data.userStats);
+    if (data.workoutRecords) {
+      for (const r of data.workoutRecords) await saveWorkoutRecord(r);
+    }
+    if (data.progressEntries) {
+      for (const e of data.progressEntries) await saveProgressEntry(e);
+    }
+    if (data.userStats) {
+      // Simplification for import
+      await supabase.from("user_stats").upsert({
+        user_id: USER_ID,
+        current_streak: data.userStats.currentStreak,
+        longest_streak: data.userStats.longestStreak,
+        total_workouts: data.userStats.totalWorkouts,
+        join_date: data.userStats.joinDate,
+      });
+    }
     return true;
   } catch {
     return false;

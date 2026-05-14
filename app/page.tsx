@@ -13,8 +13,11 @@ export default function Dashboard() {
   const today = getTodayWorkout();
 
   useEffect(() => {
-    setStats(recalculateStats());
-    setWeekRecords(getThisWeekRecords());
+    async function loadData() {
+      setStats(await recalculateStats());
+      setWeekRecords(await getThisWeekRecords());
+    }
+    loadData();
   }, []);
 
   const weekCompletedKeys = new Set(weekRecords.map((r) => r.dayKey));
